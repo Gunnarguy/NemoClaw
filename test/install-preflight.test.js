@@ -19,7 +19,9 @@ function writeExecutable(target, contents) {
 
 describe("installer runtime preflight", () => {
   it("fails fast with a clear message on unsupported Node.js and npm", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-install-preflight-"));
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nemoclaw-install-preflight-"),
+    );
     const fakeBin = path.join(tmp, "bin");
     fs.mkdirSync(fakeBin);
 
@@ -66,7 +68,9 @@ exit 98
   });
 
   it("uses the HTTPS GitHub fallback when not installing from a repo checkout", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-install-fallback-"));
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nemoclaw-install-fallback-"),
+    );
     const fakeBin = path.join(tmp, "bin");
     const prefix = path.join(tmp, "prefix");
     const gitLog = path.join(tmp, "git.log");
@@ -162,7 +166,9 @@ exit 98
   });
 
   it("prints the HTTPS GitHub remediation when the binary is missing", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-install-remediation-"));
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nemoclaw-install-remediation-"),
+    );
     const fakeBin = path.join(tmp, "bin");
     const prefix = path.join(tmp, "prefix");
     fs.mkdirSync(fakeBin);
@@ -240,12 +246,17 @@ exit 98
 
     const output = `${result.stdout}${result.stderr}`;
     assert.notEqual(result.status, 0);
-    assert.match(output, new RegExp(GITHUB_INSTALL_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(
+      output,
+      new RegExp(GITHUB_INSTALL_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
     assert.doesNotMatch(output, /npm install -g nemoclaw/);
   });
 
   it("does not silently prefer Colima when both macOS runtimes are available", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-macos-runtime-choice-"));
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nemoclaw-macos-runtime-choice-"),
+    );
     const fakeBin = path.join(tmp, "bin");
     const colimaSocket = path.join(tmp, ".colima/default/docker.sock");
     const dockerDesktopSocket = path.join(tmp, ".docker/run/docker.sock");
@@ -325,7 +336,9 @@ echo "Darwin"
   });
 
   it("can run via stdin without a sibling runtime.sh file", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-curl-pipe-installer-"));
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nemoclaw-curl-pipe-installer-"),
+    );
     const fakeBin = path.join(tmp, "bin");
     const prefix = path.join(tmp, "prefix");
     fs.mkdirSync(fakeBin);
@@ -429,6 +442,7 @@ exit 0
         PATH: `${fakeBin}:${TEST_SYSTEM_PATH}`,
         NEMOCLAW_NON_INTERACTIVE: "1",
         NPM_PREFIX: prefix,
+        NVM_DIR: "",
       },
     });
 
@@ -439,7 +453,9 @@ exit 0
   });
 
   it("creates a user-local shim when npm installs outside the current PATH", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-install-shim-"));
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nemoclaw-install-shim-"),
+    );
     const fakeBin = path.join(tmp, "bin");
     const prefix = path.join(tmp, "prefix");
     fs.mkdirSync(fakeBin);
@@ -545,12 +561,16 @@ exit 0
         PATH: `${fakeBin}:${TEST_SYSTEM_PATH}`,
         NEMOCLAW_NON_INTERACTIVE: "1",
         NPM_PREFIX: prefix,
+        NVM_DIR: "",
       },
     });
 
     const shimPath = path.join(tmp, ".local", "bin", "nemoclaw");
     assert.equal(result.status, 0);
-    assert.equal(fs.readlinkSync(shimPath), path.join(prefix, "bin", "nemoclaw"));
+    assert.equal(
+      fs.readlinkSync(shimPath),
+      path.join(prefix, "bin", "nemoclaw"),
+    );
     assert.match(`${result.stdout}${result.stderr}`, /Created user-local shim/);
   });
 });

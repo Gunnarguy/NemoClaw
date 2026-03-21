@@ -96,35 +96,80 @@ else
   define_runtime_helpers
 fi
 
-# Ensure nvm environment is loaded in the current shell.
-ensure_nvm_loaded() {
-  if [ -z "${NVM_DIR:-}" ]; then
-    export NVM_DIR="$HOME/.nvm"
-  fi
-  if [ -s "$NVM_DIR/nvm.sh" ]; then
-    # shellcheck source=/dev/null
-    . "$NVM_DIR/nvm.sh"
-  fi
-}
+# Source shared install-helpers when running from a checkout.
+# When piped via stdin (curl | bash), SCRIPT_DIR is empty so we fall back
+# to inline definitions that mirror the shared file.
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/lib/install-helpers.sh" ]; then
+  # shellcheck source=lib/install-helpers.sh
+  . "$SCRIPT_DIR/lib/install-helpers.sh"
+else
+  # ── Inline copies for curl-pipe execution (no local checkout) ──
+  MIN_NODE_MAJOR=20
+  MIN_NPM_MAJOR=10
+  RECOMMENDED_NODE_MAJOR=22
+  RUNTIME_REQUIREMENT_MSG="NemoClaw requires Node.js >=${MIN_NODE_MAJOR} and npm >=${MIN_NPM_MAJOR} (recommended Node.js ${RECOMMENDED_NODE_MAJOR})."
 
-# Refresh PATH so that npm global bin is discoverable.
-refresh_path() {
-  ensure_nvm_loaded
+  version_major() {
+    printf '%s\n' "${1#v}" | cut -d. -f1
+  }
 
-  local npm_bin
-  npm_bin="$(npm config get prefix 2>/dev/null)/bin" || true
-  if [ -n "$npm_bin" ] && [ -d "$npm_bin" ]; then
-    case ":$PATH:" in
-      *":$npm_bin:"*) ;;  # already on PATH
-      *) export PATH="$npm_bin:$PATH" ;;
+  ensure_nvm_loaded() {
+    if [ -z "${NVM_DIR:-}" ]; then
+      export NVM_DIR="$HOME/.nvm"
+    fi
+    if [ -s "$NVM_DIR/nvm.sh" ]; then
+      # shellcheck source=/dev/null
+      . "$NVM_DIR/nvm.sh"
+    fi
+  }
+
+  refresh_path() {
+    ensure_nvm_loaded
+    local npm_bin
+    npm_bin="$(npm config get prefix 2>/dev/null)/bin" || true
+    if [ -n "$npm_bin" ] && [ -d "$npm_bin" ]; then
+      case ":$PATH:" in
+        *":$npm_bin:"*) ;;
+        *) export PATH="$npm_bin:$PATH" ;;
+      esac
+    fi
+  }
+
+  ensure_nemoclaw_shim() {
+    local shim_dir="${NEMOCLAW_SHIM_DIR:-${HOME}/.local/bin}"
+    local npm_bin shim_path
+    npm_bin="$(npm config get prefix 2>/dev/null)/bin" || true
+    shim_path="${shim_dir}/nemoclaw"
+    if [ -z "$npm_bin" ] || [ ! -x "$npm_bin/nemoclaw" ]; then
+      return 1
+    fi
+    local orig_path="${ORIGINAL_PATH:-${PATH:-}}"
+    case ":$orig_path:" in
+      *":$npm_bin:"*|*":$shim_dir:"*) return 0 ;;
     esac
-  fi
-}
+    mkdir -p "$shim_dir"
+    ln -sfn "$npm_bin/nemoclaw" "$shim_path"
+    refresh_path
+    info "Created user-local shim at $shim_path"
+    return 0
+  }
 
-MIN_NODE_MAJOR=20
-MIN_NPM_MAJOR=10
-RECOMMENDED_NODE_MAJOR=22
-RUNTIME_REQUIREMENT_MSG="NemoClaw requires Node.js >=${MIN_NODE_MAJOR} and npm >=${MIN_NPM_MAJOR} (recommended Node.js ${RECOMMENDED_NODE_MAJOR})."
+  ensure_supported_runtime() {
+    command -v node >/dev/null 2>&1 || fail "${RUNTIME_REQUIREMENT_MSG} Node.js was not found on PATH."
+    command -v npm  >/dev/null 2>&1 || fail "${RUNTIME_REQUIREMENT_MSG} npm was not found on PATH."
+    local node_version npm_version node_major npm_major
+    node_version="$(node -v 2>/dev/null || true)"
+    npm_version="$(npm --version 2>/dev/null || true)"
+    node_major="$(version_major "$node_version")"
+    npm_major="$(version_major "$npm_version")"
+    case "$node_major" in ''|*[!0-9]*) fail "Could not determine Node.js version from '${node_version}'. ${RUNTIME_REQUIREMENT_MSG}" ;; esac
+    case "$npm_major"  in ''|*[!0-9]*) fail "Could not determine npm version from '${npm_version}'. ${RUNTIME_REQUIREMENT_MSG}" ;; esac
+    if [ "$node_major" -lt "$MIN_NODE_MAJOR" ] || [ "$npm_major" -lt "$MIN_NPM_MAJOR" ]; then
+      fail "Unsupported runtime detected: Node.js ${node_version:-unknown}, npm ${npm_version:-unknown}. ${RUNTIME_REQUIREMENT_MSG} Upgrade Node.js and rerun the installer."
+    fi
+    info "Runtime OK: Node.js ${node_version}, npm ${npm_version}"
+  }
+fi
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -164,30 +209,6 @@ elif [ "$OS" = "Linux" ]; then
 fi
 
 info "Node.js manager: $NODE_MGR"
-
-version_major() {
-  printf '%s\n' "${1#v}" | cut -d. -f1
-}
-
-ensure_supported_runtime() {
-  command -v node > /dev/null 2>&1 || fail "${RUNTIME_REQUIREMENT_MSG} Node.js was not found on PATH."
-  command -v npm > /dev/null 2>&1 || fail "${RUNTIME_REQUIREMENT_MSG} npm was not found on PATH."
-
-  local node_version npm_version node_major npm_major
-  node_version="$(node -v 2>/dev/null || true)"
-  npm_version="$(npm --version 2>/dev/null || true)"
-  node_major="$(version_major "$node_version")"
-  npm_major="$(version_major "$npm_version")"
-
-  [[ "$node_major" =~ ^[0-9]+$ ]] || fail "Could not determine Node.js version from '${node_version}'. ${RUNTIME_REQUIREMENT_MSG}"
-  [[ "$npm_major" =~ ^[0-9]+$ ]] || fail "Could not determine npm version from '${npm_version}'. ${RUNTIME_REQUIREMENT_MSG}"
-
-  if (( node_major < MIN_NODE_MAJOR || npm_major < MIN_NPM_MAJOR )); then
-    fail "Unsupported runtime detected: Node.js ${node_version:-unknown}, npm ${npm_version:-unknown}. ${RUNTIME_REQUIREMENT_MSG} Upgrade Node.js and rerun the installer."
-  fi
-
-  info "Runtime OK: Node.js ${node_version}, npm ${npm_version}"
-}
 
 # ── Install Node.js 22 if needed ────────────────────────────────
 
@@ -432,8 +453,11 @@ refresh_path
 # ── Verify ───────────────────────────────────────────────────────
 
 if ! command -v nemoclaw > /dev/null 2>&1; then
-  # Try refreshing PATH one more time
   refresh_path
+fi
+
+if ! command -v nemoclaw > /dev/null 2>&1; then
+  ensure_nemoclaw_shim || true
 fi
 
 if ! command -v nemoclaw > /dev/null 2>&1; then
@@ -457,7 +481,15 @@ echo ""
 info "Installation complete!"
 info "nemoclaw $(nemoclaw --version 2>/dev/null || echo 'v0.1.0') is ready."
 echo ""
-echo "  Run \`nemoclaw onboard\` to get started"
+echo "  ┌─────────────────────────────────────────────────────────┐"
+echo "  │ Next step:  nemoclaw onboard                            │"
+echo "  │                                                         │"
+echo "  │ The wizard will:                                        │"
+echo "  │  1. Ask for your NVIDIA API key (build.nvidia.com)      │"
+echo "  │  2. Create an OpenShell gateway                         │"
+echo "  │  3. Build the sandbox image (~2.4 GB)                   │"
+echo "  │  4. Launch the sandboxed environment                    │"
+echo "  └─────────────────────────────────────────────────────────┘"
 echo ""
 
 # ── Post-install: shell reload instructions ──────────────────

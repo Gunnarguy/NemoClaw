@@ -176,6 +176,16 @@ Task-oriented guides for inference, deployment, and policy management.
 {bdg-secondary}`How-To`
 :::
 
+:::{grid-item-card} Troubleshooting
+:link: reference/troubleshooting
+:link-type: doc
+
+Diagnose and fix common installation, onboarding, and runtime issues.
+
++++
+{bdg-secondary}`Reference`
+:::
+
 ::::
 
 ```{toctree}
@@ -198,6 +208,7 @@ Release Notes <about/release-notes>
 :hidden:
 
 Quickstart <get-started/quickstart>
+DGX Spark Setup <get-started/dgx-spark>
 ```
 
 ```{toctree}

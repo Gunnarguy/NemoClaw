@@ -8,3 +8,6 @@ docs/_build/
 coverage/
 vdr-notes/
 draft_newsletter_*
+.vscode/
+Desktop/build/
+Desktop/icons/

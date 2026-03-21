@@ -17,6 +17,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_PORT="${DASHBOARD_PORT:-18789}"
+ENABLE_PUBLIC_TUNNEL="${NEMOCLAW_ENABLE_PUBLIC_TUNNEL:-0}"
 
 # ── Parse flags ──────────────────────────────────────────────────
 SANDBOX_NAME="${NEMOCLAW_SANDBOX:-${SANDBOX_NAME:-default}}"
@@ -144,12 +145,16 @@ do_start() {
       node "$REPO_DIR/scripts/telegram-bridge.js"
   fi
 
-  # 3. cloudflared tunnel
-  if command -v cloudflared > /dev/null 2>&1; then
-    start_service cloudflared \
-      cloudflared tunnel --url "http://localhost:$DASHBOARD_PORT"
+  # 3. cloudflared tunnel (opt-in only)
+  if [ "$ENABLE_PUBLIC_TUNNEL" = "1" ]; then
+    if command -v cloudflared > /dev/null 2>&1; then
+      start_service cloudflared \
+        cloudflared tunnel --url "http://localhost:$DASHBOARD_PORT"
+    else
+      warn "cloudflared not found — no public URL. Install: brev-setup.sh or manually."
+    fi
   else
-    warn "cloudflared not found — no public URL. Install: brev-setup.sh or manually."
+    info "Public tunnel disabled (set NEMOCLAW_ENABLE_PUBLIC_TUNNEL=1 to enable)."
   fi
 
   # Wait for cloudflared to publish URL

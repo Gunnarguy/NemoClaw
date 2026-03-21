@@ -22,7 +22,23 @@ status: published
 
 # Troubleshooting
 
-This page covers common issues you may encounter when installing, onboarding, or running NemoClaw, along with their resolution steps.
+Start here when something goes wrong.
+Run the quick diagnostic first — most problems show up immediately.
+
+## Quick Diagnostic
+
+Run these four commands. The first one that fails points you to the right section below.
+
+```console
+$ node --version          # Need v20+  → see "Node.js version is too old"
+$ npm --version           # Need v10+  → usually fixed by upgrading Node.js
+$ docker info             # Must be running → see "Docker is not running"
+$ nemoclaw --version      # CLI on PATH → see "nemoclaw not found after install"
+```
+
+If all four pass, skip to [Onboarding](#onboarding) or [Runtime](#runtime).
+
+---
 
 :::{admonition} Get Help
 :class: tip
@@ -34,119 +50,125 @@ If your issue is not listed here, join the [NemoClaw Discord channel](https://di
 
 ### `nemoclaw` not found after install
 
-If you use nvm or fnm to manage Node.js, the installer may not update your current shell's PATH.
-The `nemoclaw` binary is installed but the shell session does not know where to find it.
+**What you see:** `command not found: nemoclaw` after the installer finishes.
 
-Run `source ~/.bashrc` (or `source ~/.zshrc` for zsh), or open a new terminal window.
+**Why:** nvm/fnm installed Node.js into a directory that your current shell doesn't know about yet.
+
+**Fix:**
+
+```console
+$ source ~/.bashrc        # or ~/.zshrc for zsh
+$ nemoclaw --version      # should work now
+```
+
+Still nothing? Check where npm puts global binaries and ensure that directory is on PATH:
+
+```console
+$ npm config get prefix   # e.g. /home/you/.nvm/versions/node/v22.x
+$ ls "$(npm config get prefix)/bin/nemoclaw"
+```
 
 ### Installer fails on unsupported platform
 
-The installer checks for a supported OS and architecture before proceeding.
-NemoClaw requires Linux Ubuntu 22.04 LTS or later.
-If you see an unsupported platform error, verify that you are running on a supported Linux distribution.
+**What you see:** "unsupported OS" or "unsupported architecture" error.
+
+**Why:** NemoClaw requires Linux (Ubuntu 22.04+), macOS (Apple Silicon), or Windows WSL2.
+
+**Fix:** Verify your OS and arch. On WSL, make sure you're running the installer _inside_ WSL, not from PowerShell.
 
 ### Node.js version is too old
 
-NemoClaw requires Node.js 20 or later.
-If the installer exits with a Node.js version error, check your current version:
+**What you see:** Installer exits with a Node.js version error, or `node --version` reports < 20.
+
+**Fix (nvm):**
 
 ```console
-$ node --version
+$ nvm install 22 && nvm use 22
 ```
 
-If the version is below 20, install a supported release.
-If you use nvm, run:
-
-```console
-$ nvm install 20
-$ nvm use 20
-```
-
-Then re-run the installer.
+**Fix (system):** Install Node.js 22 from [nodejs.org](https://nodejs.org) or your package manager, then re-run the installer.
 
 ### Docker is not running
 
-The installer and onboard wizard require Docker to be running.
-If you see a Docker connection error, start the Docker daemon:
+**What you see:** "Cannot connect to the Docker daemon" or similar.
+
+**Fix (Linux):**
 
 ```console
 $ sudo systemctl start docker
 ```
 
-On macOS with Docker Desktop, open the Docker Desktop application and wait for it to finish starting before retrying.
+**Fix (macOS):** Open Docker Desktop (or start Colima: `colima start`) and wait for the engine to finish starting.
 
 ### npm install fails with permission errors
 
-If `npm install` fails with an `EACCES` permission error, do not run npm with `sudo`.
-Instead, configure npm to use a directory you own:
+**What you see:** `EACCES` permission error from npm.
+
+**Why:** npm is trying to write to a root-owned directory. **Do not use `sudo npm`.**
+
+**Fix:**
 
 ```console
 $ mkdir -p ~/.npm-global
 $ npm config set prefix ~/.npm-global
-$ export PATH=~/.npm-global/bin:$PATH
+$ export PATH=~/.npm-global/bin:$PATH   # add to ~/.bashrc or ~/.zshrc
 ```
 
-Add the `export` line to your `~/.bashrc` or `~/.zshrc` to make it permanent, then re-run the installer.
+### Port 18789 already in use
 
-### Port already in use
+**What you see:** Onboarding or gateway startup fails because port 18789 is taken.
 
-The NemoClaw gateway uses port `18789` by default.
-If another process is already bound to this port, onboarding fails.
-Identify the conflicting process, verify it is safe to stop, and terminate it:
+**Fix:**
 
 ```console
-$ lsof -i :18789
-$ kill <PID>
+$ lsof -i :18789          # find the process
+$ kill <PID>              # stop it, then retry
 ```
 
-If the process does not exit, use `kill -9 <PID>` to force-terminate it.
-Then retry onboarding.
+---
 
 ## Onboarding
 
 ### Cgroup v2 errors during onboard
 
-On Ubuntu 24.04, DGX Spark, and WSL2, Docker may not be configured for cgroup v2 delegation.
-The onboard preflight check detects this and fails with a clear error message.
+**What you see:** `Failed to start ContainerManager` or cgroup-related errors. Common on Ubuntu 24.04, DGX Spark, and WSL2.
 
-Run the Spark setup script to fix the Docker cgroup configuration, then retry onboarding:
+**Fix:**
 
 ```console
 $ sudo nemoclaw setup-spark
 $ nemoclaw onboard
 ```
 
+See the [DGX Spark guide](../get-started/dgx-spark.md) for full details.
+
 ### Invalid sandbox name
 
-Sandbox names must follow RFC 1123 subdomain rules: lowercase alphanumeric characters and hyphens only, and must start and end with an alphanumeric character.
-Uppercase letters are automatically lowercased.
+**What you see:** "invalid sandbox name" error from the wizard.
 
-If the name does not match these rules, the wizard exits with an error.
-Choose a name such as `my-assistant` or `dev1`.
+**Why:** Names must be lowercase alphanumeric + hyphens, starting and ending with a letter or digit. Examples: `my-assistant`, `dev1`.
 
 ### Sandbox creation fails on DGX
 
-On DGX machines, sandbox creation can fail if the gateway's DNS has not finished propagating or if a stale port forward from a previous onboard run is still active.
+**What you see:** DNS timeout or stale port-forward errors during sandbox creation.
 
-Run `nemoclaw onboard` to retry.
-The wizard cleans up stale port forwards and waits for gateway readiness automatically.
+**Fix:** Re-run `nemoclaw onboard`. The wizard automatically cleans up stale port-forwards and retries gateway readiness.
 
 ### Colima socket not detected (macOS)
 
-Newer Colima versions use the XDG base directory (`~/.config/colima/default/docker.sock`) instead of the legacy path (`~/.colima/default/docker.sock`).
-NemoClaw checks both paths.
-If neither is found, verify that Colima is running:
+**What you see:** "Docker socket not found" on macOS with Colima.
 
-```console
-$ colima status
-```
+**Why:** Newer Colima versions use `~/.config/colima/default/docker.sock` instead of `~/.colima/default/docker.sock`. NemoClaw checks both paths.
+
+**Fix:** Verify Colima is running: `colima status`. If it's stopped, run `colima start`.
+
+---
 
 ## Runtime
 
 ### Sandbox shows as stopped
 
-The sandbox may have been stopped or deleted.
-Run `nemoclaw onboard` to recreate the sandbox from the same blueprint and policy definitions.
+**Fix:** Run `nemoclaw onboard` to recreate the sandbox from the same blueprint and policy definitions.
 
 ### Status shows "not running" inside the sandbox
 
@@ -154,34 +176,37 @@ This is expected behavior.
 When checking status inside an active sandbox, host-side sandbox state and inference configuration are not inspectable.
 The status command detects the sandbox context and reports "active (inside sandbox)" instead.
 
-Run `openshell sandbox list` on the host to check the underlying sandbox state.
+**Fix:** Check host-side state from outside the sandbox:
+
+```console
+$ openshell sandbox list
+```
 
 ### Inference requests time out
 
-Verify that the inference provider endpoint is reachable from the host.
-Check the active provider and endpoint:
+**Check:**
 
 ```console
 $ nemoclaw <name> status
 ```
 
-If the endpoint is correct but requests still fail, check for network policy rules that may block the connection, and verify that your NVIDIA API key is valid.
+If the endpoint is correct, check for network policy rules blocking the connection and verify your NVIDIA API key is valid at [build.nvidia.com](https://build.nvidia.com).
 
 ### Agent cannot reach an external host
 
-OpenShell blocks outbound connections to hosts not listed in the network policy.
-Open the TUI to see blocked requests and approve them:
+**Why:** OpenShell blocks outbound connections not listed in the network policy.
+
+**Fix:** Open the TUI to see blocked requests and approve them:
 
 ```console
 $ openshell term
 ```
 
-To permanently allow an endpoint, add it to the network policy.
-Refer to [Customize the Network Policy](../network-policy/customize-network-policy.md) for details.
+To permanently allow an endpoint, see [Customize the Network Policy](../network-policy/customize-network-policy.md).
 
 ### Blueprint run failed
 
-View the error output for the failed blueprint run:
+**Fix:** View the error output:
 
 ```console
 $ nemoclaw <name> logs

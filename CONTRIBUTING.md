@@ -21,55 +21,47 @@ Install the following before you begin.
 
 ## Getting Started
 
-Install the root dependencies and build the TypeScript plugin:
+One command installs every dependency (root CLI, TypeScript plugin, and Python blueprint):
 
 ```bash
-# Install root dependencies (OpenClaw + CLI entry point)
-npm install
-
-# Install and build the TypeScript plugin
-cd nemoclaw && npm install && npm run build && cd ..
-
-# Install Python deps for the blueprint
-cd nemoclaw-blueprint && uv sync && cd ..
+make setup    # installs root + plugin + blueprint deps
+make doctor   # verify all prerequisites are healthy
+make build    # compile the TypeScript plugin
+make test     # run the full test suite
 ```
 
-## Building
-
-The TypeScript plugin lives in `nemoclaw/` and compiles with `tsc`:
-
-```bash
-cd nemoclaw
-npm run build        # one-time compile
-npm run dev          # watch mode
-```
+If `make doctor` reports a missing tool, install it before continuing.
 
 ## Main Tasks
 
-These are the primary `make` and `npm` targets for day-to-day development:
+Every developer action has a `make` target. Run `make help` for the full list.
 
-| Task | Purpose |
-|------|---------|
-| `make check` | Run all linters (TypeScript + Python) |
-| `make lint` | Same as `make check` |
-| `make format` | Auto-format TypeScript and Python source |
-| `npm test` | Run root-level tests (`test/*.test.js`) |
-| `cd nemoclaw && npm test` | Run plugin unit tests (Vitest) |
-| `make docs` | Build documentation (Sphinx/MyST) |
-| `make docs-live` | Serve docs locally with auto-rebuild |
+| Task               | Purpose                                      |
+| ------------------ | -------------------------------------------- |
+| `make setup`       | Install all deps (root + plugin + blueprint) |
+| `make doctor`      | Verify Node, npm, Python, uv, Docker, ruff   |
+| `make build`       | Compile the TypeScript plugin (`tsc`)        |
+| `make test`        | Run **all** test suites (root + plugin)      |
+| `make test-root`   | Root unit tests only (`node --test`)         |
+| `make test-plugin` | Plugin unit tests only (Vitest)              |
+| `make check`       | Run all linters (TypeScript + Python)        |
+| `make format`      | Auto-format TypeScript and Python source     |
+| `make clean`       | Remove build artifacts                       |
+| `make docs`        | Build documentation (Sphinx/MyST)            |
+| `make docs-live`   | Serve docs locally with hot-reload           |
 
 ## Project Structure
 
 The repository is organized as follows.
 
-| Path | Purpose |
-|------|---------|
-| `nemoclaw/` | TypeScript plugin (Commander CLI, OpenClaw extension) |
-| `nemoclaw-blueprint/` | Python blueprint for sandbox orchestration |
-| `bin/` | CLI entry point (`nemoclaw.js`) |
-| `scripts/` | Install helpers and automation scripts |
-| `test/` | Root-level integration tests |
-| `docs/` | User-facing documentation (Sphinx/MyST) |
+| Path                  | Purpose                                               |
+| --------------------- | ----------------------------------------------------- |
+| `nemoclaw/`           | TypeScript plugin (Commander CLI, OpenClaw extension) |
+| `nemoclaw-blueprint/` | Python blueprint for sandbox orchestration            |
+| `bin/`                | CLI entry point (`nemoclaw.js`)                       |
+| `scripts/`            | Install helpers and automation scripts                |
+| `test/`               | Root-level integration tests                          |
+| `docs/`               | User-facing documentation (Sphinx/MyST)               |
 
 ## Documentation
 
@@ -97,8 +89,9 @@ Follow these steps to submit a pull request.
 
 1. Create a feature branch from `main`.
 2. Make your changes with tests.
-3. Run `make check` and `npm test` to verify.
-4. Open a PR.
+3. Run `make check && make test` to verify locally.
+4. Run `make doctor` if you changed dependencies or build steps.
+5. Open a PR.
 
 ### Commit Messages
 

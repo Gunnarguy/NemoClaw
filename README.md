@@ -1,9 +1,11 @@
 # NVIDIA NemoClaw: Reference Stack for Running OpenClaw in OpenShell
 
 <!-- start-badges -->
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue)](https://github.com/NVIDIA/NemoClaw/blob/main/LICENSE)
 [![Security Policy](https://img.shields.io/badge/Security-Report%20a%20Vulnerability-red)](https://github.com/NVIDIA/NemoClaw/blob/main/SECURITY.md)
 [![Project Status](https://img.shields.io/badge/status-alpha-orange)](https://github.com/NVIDIA/NemoClaw/blob/main/docs/about/release-notes.md)
+
 <!-- end-badges -->
 
 <!-- start-intro -->
@@ -38,36 +40,36 @@ Check the prerequisites before you start to ensure you have the necessary softwa
 
 #### Hardware
 
-| Resource | Minimum        | Recommended      |
-|----------|----------------|------------------|
-| CPU      | 4 vCPU         | 4+ vCPU          |
-| RAM      | 8 GB           | 16 GB            |
-| Disk     | 20 GB free     | 40 GB free       |
+| Resource | Minimum    | Recommended |
+| -------- | ---------- | ----------- |
+| CPU      | 4 vCPU     | 4+ vCPU     |
+| RAM      | 8 GB       | 16 GB       |
+| Disk     | 20 GB free | 40 GB free  |
 
 The sandbox image is approximately 2.4 GB compressed. During image push, the Docker daemon, k3s, and the OpenShell gateway run alongside the export pipeline, which buffers decompressed layers in memory. On machines with less than 8 GB of RAM, this combined usage can trigger the OOM killer. If you cannot add memory, configuring at least 8 GB of swap can work around the issue at the cost of slower performance.
 
 #### Software
 
-| Dependency | Version                          |
-|------------|----------------------------------|
-| Linux      | Ubuntu 22.04 LTS or later |
-| Node.js    | 20 or later |
-| npm        | 10 or later |
-| Container runtime | Supported runtime installed and running |
-| [OpenShell](https://github.com/NVIDIA/OpenShell) | Installed |
+| Dependency                                       | Version                                                                             |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| OS                                               | Linux (Ubuntu 22.04+), macOS (Apple Silicon), Windows WSL2                          |
+| Node.js                                          | 20 or later                                                                         |
+| npm                                              | 10 or later                                                                         |
+| Container runtime                                | Supported runtime installed and running                                             |
+| [OpenShell](https://github.com/NVIDIA/OpenShell) | Installed                                                                           |
+| NVIDIA API key                                   | Free from [build.nvidia.com](https://build.nvidia.com) — required during onboarding |
 
 #### Container Runtime Support
 
-| Platform | Supported runtimes | Notes |
-|----------|--------------------|-------|
-| Linux | Docker | Primary supported path today |
-| macOS (Apple Silicon) | Colima, Docker Desktop | Recommended runtimes for supported macOS setups |
-| macOS | Podman | Not supported yet. NemoClaw currently depends on OpenShell support for Podman on macOS. |
-| Windows WSL | Docker Desktop (WSL backend) | Supported target path |
+| Platform              | Supported runtimes           | Notes                                                                                   |
+| --------------------- | ---------------------------- | --------------------------------------------------------------------------------------- |
+| Linux                 | Docker                       | Primary supported path today                                                            |
+| macOS (Apple Silicon) | Colima, Docker Desktop       | Recommended runtimes for supported macOS setups                                         |
+| macOS                 | Podman                       | Not supported yet. NemoClaw currently depends on OpenShell support for Podman on macOS. |
+| Windows WSL           | Docker Desktop (WSL backend) | Supported target path                                                                   |
 
-> **💡 Tip**
->
-> For DGX Spark, follow the [DGX Spark setup guide](https://github.com/NVIDIA/NemoClaw/blob/main/spark-install.md). It covers Spark-specific prerequisites, such as cgroup v2 and Docker configuration, before running the standard installer.
+> [!TIP]
+> For DGX Spark, follow the [DGX Spark setup guide](docs/get-started/dgx-spark.md). It covers Spark-specific prerequisites, such as cgroup v2 and Docker configuration, before running the standard installer.
 
 ### Install NemoClaw and Onboard OpenClaw Agent
 
@@ -78,8 +80,23 @@ The script installs Node.js if it is not already present, then runs the guided o
 curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 ```
 
+> **Not sure if you're ready?** Run this pre-check:
+>
+> ```console
+> $ node --version && docker info >/dev/null && echo "Ready to install"
+> ```
+>
+> If either command fails, install [Node.js 22](https://nodejs.org) and/or start Docker first.
+
 If you use nvm or fnm to manage Node.js, the installer may not update your current shell's PATH.
 If `nemoclaw` is not found after install, run `source ~/.bashrc` (or `source ~/.zshrc` for zsh) or open a new terminal.
+
+The onboard wizard will:
+
+1. Prompt for your **NVIDIA API key** (get one free at [build.nvidia.com](https://build.nvidia.com))
+2. Create an **OpenShell gateway** for sandbox orchestration
+3. Build and push the **sandbox image** (~2.4 GB compressed)
+4. Create the **sandboxed environment** with network policy and inference routing
 
 When the install completes, a summary confirms the running environment:
 
@@ -158,6 +175,8 @@ curl -fsSL https://raw.githubusercontent.com/NVIDIA/NemoClaw/refs/heads/main/uni
 
 <!-- end-quickstart-guide -->
 
+> **Something go wrong?** See the [Troubleshooting guide](docs/reference/troubleshooting.md) — start with the Quick Diagnostic at the top.
+
 ---
 
 ## How It Works
@@ -195,12 +214,12 @@ Local inference options such as Ollama and vLLM are still experimental. On macOS
 
 The sandbox starts with a default policy that controls network egress and filesystem access:
 
-| Layer      | What it protects                                    | When it applies             |
-|------------|-----------------------------------------------------|-----------------------------|
-| Network    | Blocks unauthorized outbound connections.           | Hot-reloadable at runtime.  |
-| Filesystem | Prevents reads/writes outside `/sandbox` and `/tmp`.| Locked at sandbox creation. |
-| Process    | Blocks privilege escalation and dangerous syscalls. | Locked at sandbox creation. |
-| Inference  | Reroutes model API calls to controlled backends.    | Hot-reloadable at runtime.  |
+| Layer      | What it protects                                     | When it applies             |
+| ---------- | ---------------------------------------------------- | --------------------------- |
+| Network    | Blocks unauthorized outbound connections.            | Hot-reloadable at runtime.  |
+| Filesystem | Prevents reads/writes outside `/sandbox` and `/tmp`. | Locked at sandbox creation. |
+| Process    | Blocks privilege escalation and dangerous syscalls.  | Locked at sandbox creation. |
+| Inference  | Reroutes model API calls to controlled backends.     | Hot-reloadable at runtime.  |
 
 When the agent tries to reach an unlisted host, OpenShell blocks the request and surfaces it in the TUI for operator approval.
 
@@ -235,13 +254,28 @@ For step-by-step instructions, see [Customize Network Policy](https://docs.nvidi
 Run these on the host to set up, connect to, and manage sandboxes.
 
 | Command                              | Description                                            |
-|--------------------------------------|--------------------------------------------------------|
-| `nemoclaw onboard`                  | Interactive setup wizard: gateway, providers, sandbox. |
+| ------------------------------------ | ------------------------------------------------------ |
+| `nemoclaw onboard`                   | Interactive setup wizard: gateway, providers, sandbox. |
 | `nemoclaw <name> connect`            | Open an interactive shell inside the sandbox.          |
 | `openshell term`                     | Launch the OpenShell TUI for monitoring and approvals. |
 | `nemoclaw start` / `stop` / `status` | Manage auxiliary services (Telegram bridge, tunnel).   |
 
+### Plugin commands (`openclaw nemoclaw`)
+
+Run these inside the OpenClaw CLI. These commands are under active development and may not all be functional yet.
+
+| Command                                    | Description                                          |
+| ------------------------------------------ | ---------------------------------------------------- |
+| `openclaw nemoclaw launch [--profile ...]` | Bootstrap OpenClaw inside an OpenShell sandbox.      |
+| `openclaw nemoclaw status`                 | Show sandbox health, blueprint state, and inference. |
+| `openclaw nemoclaw logs [-f]`              | Stream blueprint execution and sandbox logs.         |
+
 See the full [CLI reference](https://docs.nvidia.com/nemoclaw/latest/reference/commands.md) for all commands, flags, and options.
+
+> **Known limitations:**
+>
+> - The `openclaw nemoclaw` plugin commands are under active development. Use the `nemoclaw` host CLI as the primary interface.
+> - Setup may require manual workarounds on some platforms. File an issue if you encounter blockers.
 
 ---
 
