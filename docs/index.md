@@ -239,7 +239,6 @@ Set Up the Telegram Bridge <deployment/set-up-telegram-bridge>
 :hidden:
 
 Monitor Sandbox Activity <monitoring/monitor-sandbox-activity>
-macOS Hub App <monitoring/macos-hub-app>
 ```
 
 ```{toctree}
