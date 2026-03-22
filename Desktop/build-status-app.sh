@@ -38,6 +38,7 @@ swiftc \
   -target arm64-apple-macos13 \
   -framework Cocoa \
   -framework Foundation \
+  -framework UserNotifications \
   -o "$BUILD_DIR/NemoClawStatus" \
   "$SWIFT_SRC"
 
