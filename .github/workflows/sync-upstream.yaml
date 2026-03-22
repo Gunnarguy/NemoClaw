@@ -33,31 +33,33 @@ jobs:
           echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
           echo "Upstream is $BEHIND commits ahead"
 
-      - name: Fast-forward merge
+      - name: Merge upstream
         if: steps.check.outputs.behind != '0'
         id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git merge --ff-only upstream/main; then
+          if git merge upstream/main --no-edit; then
             echo "result=success" >> "$GITHUB_OUTPUT"
-            git push origin main
           else
+            git merge --abort
             echo "result=conflict" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Push merged main
+        if: steps.merge.outputs.result == 'success'
+        run: git push origin main
 
       - name: Create PR on conflict
         if: steps.merge.outputs.result == 'conflict'
         run: |
-          BRANCH="auto/sync-upstream-$(date +%Y%m%d-%H%M)"
+          BRANCH="auto/sync-upstream-$(date +%Y%m%d-%H%M%S)"
           git checkout -b "$BRANCH"
-          git merge upstream/main --no-edit || true
-          git add -A
-          git commit -m "chore: merge upstream (conflicts need manual resolution)" --allow-empty
+          git merge upstream/main -X theirs --no-edit
           git push origin "$BRANCH"
           gh pr create \
             --title "chore: sync upstream (has conflicts)" \
-            --body "Automated upstream sync found merge conflicts that need manual resolution. Review the changes and resolve conflicts before merging." \
+            --body "Automated upstream sync found merge conflicts. Upstream changes applied with \`-X theirs\` strategy — review carefully before merging to ensure your fork-only changes are preserved." \
             --base main \
             --head "$BRANCH"
         env:
