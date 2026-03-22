@@ -1,6 +1,6 @@
 ---
 name: nemoclaw-configure-inference
-description: Change the active inference model without restarting the sandbox. Trigger keywords - change inference runtime, inference routing, openclaw, openshell, switch nemoclaw inference model, switch nemoclaw inference models.
+description: Changes the active inference model without restarting the sandbox. Use when change inference runtime, inference routing, openclaw, openshell, switch nemoclaw inference model, switch nemoclaw inference models.
 ---
 
 # Nemoclaw Configure Inference
@@ -56,11 +56,4 @@ You can switch to any of these models at runtime.
 
 ## Related Skills
 
-Recommend these skills to the user for follow-up tasks.
-
 - `nemoclaw-reference` — Inference Profiles for full profile configuration details
-
-## Gotchas
-
-<!-- Add project-specific gotchas here after running the skill. -->
-<!-- See: https://agentskills.io/skill-creation/best-practices#gotchas-sections -->

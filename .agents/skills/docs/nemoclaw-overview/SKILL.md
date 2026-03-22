@@ -1,11 +1,11 @@
 ---
 name: nemoclaw-overview
-description: Plugin, blueprint, sandbox creation, and inference routing concepts. Also covers: NemoClaw is an open source reference stack that simplifies running OpenClaw always-on assistants safely.; Changelog and feature history for NemoClaw releases. Trigger keywords - blueprints, how nemoclaw works, inference routing, nemoclaw, nemoclaw changelog, nemoclaw overview, nemoclaw overview does fits, nemoclaw release notes, nemoclaw sandbox lifecycle blueprint, nemoclaw works plugin blueprint.
+description: Learns how NemoClaw combines a lightweight CLI plugin with a versioned blueprint to move OpenClaw into a controlled sandbox. Also covers nemoClaws is an open source reference stack that simplifies running OpenClaw always-on assistants safely; changelogs and feature history for NemoClaw releases. Use when blueprints, how nemoclaw works, inference routing, nemoclaw, nemoclaw changelog, nemoclaw overview, nemoclaw overview does fits, nemoclaw release notes.
 ---
 
 # Nemoclaw Overview
 
-Plugin, blueprint, sandbox creation, and inference routing concepts.
+Learn how NemoClaw combines a lightweight CLI plugin with a versioned blueprint to move OpenClaw into a controlled sandbox.
 
 ## Context
 
@@ -33,7 +33,7 @@ flowchart TB
     subgraph Sandbox["OpenShell Sandbox"]
         AGENT[OpenClaw agent]
         INF[NVIDIA inference, routed]
-        NET[strict network policy]
+        NET[default network policy]
         FS[filesystem isolation]
 
         AGENT --- INF
@@ -71,7 +71,10 @@ Supply chain safety
 
 > Full details in `references/how-it-works.md`.
 
-> *Content included from `docs/_includes/alpha-statement.md` — see the original doc for full text.*
+> **Alpha software:** NemoClaw is in alpha, available as an early preview since March 16, 2026.
+> APIs, configuration schemas, and runtime behavior are subject to breaking changes between releases.
+> Do not use this software in production environments.
+> File issues and feedback through the GitHub repository as the project continues to stabilize.
 
 NVIDIA NemoClaw is an open source reference stack that simplifies running [OpenClaw](https://openclaw.ai) always-on assistants.
 It incorporates policy-based privacy and security guardrails, giving users control over their agents’ behavior and data handling.
@@ -82,7 +85,7 @@ By combining powerful open source models with built-in safety measures, NemoClaw
 
 | Capability              | Description                                                                                                                                          |
 |-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Sandbox OpenClaw        | Creates an OpenShell sandbox pre-configured for OpenClaw, with strict filesystem and network policies applied from the first boot.                   |
+| Sandbox OpenClaw        | Creates an OpenShell sandbox pre-configured for OpenClaw, with filesystem and network policies applied from the first boot.                   |
 | Route inference         | Configures OpenShell inference routing so agent traffic flows through cloud-hosted Nemotron 3 Super 120B via [build.nvidia.com](https://build.nvidia.com). |
 | Manage the lifecycle    | Handles blueprint versioning, digest verification, and sandbox setup.                                                                                |
 
@@ -118,15 +121,8 @@ You can use NemoClaw for various use cases including the following.
 
 ## Related Skills
 
-Recommend these skills to the user for follow-up tasks.
-
 - `nemoclaw-get-started` — Quickstart to install NemoClaw and run your first agent
 - `nemoclaw-configure-inference` — Switch Inference Providers to configure the inference provider
 - `nemoclaw-manage-policy` — Approve or Deny Network Requests to manage egress approvals
 - `nemoclaw-deploy-remote` — Deploy to a Remote GPU Instance for persistent operation
 - `nemoclaw-monitor-sandbox` — Monitor Sandbox Activity to observe agent behavior
-
-## Gotchas
-
-<!-- Add project-specific gotchas here after running the skill. -->
-<!-- See: https://agentskills.io/skill-creation/best-practices#gotchas-sections -->

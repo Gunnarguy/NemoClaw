@@ -1,12 +1,8 @@
-<!-- markdownlint-disable MD014 -->
-
 # Troubleshooting
 
 This page covers common issues you may encounter when installing, onboarding, or running NemoClaw, along with their resolution steps.
 
-> **Get Help:** :class: tip
-
-If your issue is not listed here, join the [NemoClaw Discord channel](https://discord.gg/XFpfPv9Uvx) to ask questions and get help from the community. You can also [file an issue on GitHub](https://github.com/NVIDIA/NemoClaw/issues/new).
+> **Get Help:** If your issue is not listed here, join the [NemoClaw Discord channel](https://discord.gg/XFpfPv9Uvx) to ask questions and get help from the community. You can also [file an issue on GitHub](https://github.com/NVIDIA/NemoClaw/issues/new).
 
 ## Installation
 
