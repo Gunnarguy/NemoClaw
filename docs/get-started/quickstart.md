@@ -41,6 +41,7 @@ NemoClaw currently requires a fresh installation of OpenClaw.
 - [Customize the network policy](../network-policy/customize-network-policy.md) to pre-approve trusted domains.
 - [Deploy to a remote GPU instance](../deployment/deploy-to-remote-gpu.md) for always-on operation.
 - [Monitor sandbox activity](../monitoring/monitor-sandbox-activity.md) through the OpenShell TUI.
+- [Install the macOS Hub app](../monitoring/macos-hub-app.md) for a menu bar dashboard with live logs, policy toggles, and Telegram remote control.
 
 ### Troubleshooting
 
