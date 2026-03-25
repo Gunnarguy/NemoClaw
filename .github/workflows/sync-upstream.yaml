@@ -1,8 +1,12 @@
 name: sync-upstream
 
 # Syncs this fork with NVIDIA/NemoClaw every 6 hours.
-# Uses GitHub's merge-upstream API — runs server-side so it doesn't need
-# a PAT with the 'workflow' OAuth scope.
+# Uses GitHub's merge-upstream API (runs server-side, no git push needed).
+#
+# Limitation: GITHUB_TOKEN cannot merge upstream commits that modify workflow
+# files under .github/workflows/. When this happens the job exits successfully
+# with a warning instead of failing — use the "Sync fork" button in the GitHub
+# UI to pull those changes manually.
 
 on:
   schedule:
@@ -33,13 +37,23 @@ jobs:
           BODY=$(cat /tmp/response.json)
           echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
 
+          MESSAGE=$(echo "$BODY" | jq -r '.message // empty')
+
           case "$HTTP_CODE" in
             200)
               MERGE_TYPE=$(echo "$BODY" | jq -r '.merge_type // "unknown"')
               echo "Fork synced successfully (merge_type: $MERGE_TYPE)"
               ;;
             409)
-              echo "::error::Merge conflict — visit https://github.com/$REPO and click 'Sync fork' to resolve manually."
+              echo "::error::Merge conflict — visit https://github.com/$REPO and click 'Sync fork' to resolve."
+              exit 1
+              ;;
+            422)
+              if echo "$MESSAGE" | grep -qi "workflow"; then
+                echo "::notice::Upstream contains workflow file changes that GITHUB_TOKEN cannot merge. Use the 'Sync fork' button in the GitHub UI."
+                exit 0
+              fi
+              echo "::error::Unprocessable Entity: $MESSAGE"
               exit 1
               ;;
             *)
