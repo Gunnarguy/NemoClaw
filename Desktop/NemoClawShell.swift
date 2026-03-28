@@ -2,6 +2,7 @@ import AppKit
 import Darwin
 import Foundation
 import SwiftUI
+import WebKit
 
 enum ShellAppMode: String, Sendable {
   case desktop
@@ -158,6 +159,7 @@ enum LauncherExecutionError: LocalizedError {
 }
 
 enum NativeTab: String, CaseIterable, Identifiable {
+  case dashboard
   case overview
   case controls
   case logs
@@ -166,6 +168,8 @@ enum NativeTab: String, CaseIterable, Identifiable {
 
   var title: String {
     switch self {
+    case .dashboard:
+      return "Web UI"
     case .overview:
       return "Overview"
     case .controls:
@@ -177,6 +181,8 @@ enum NativeTab: String, CaseIterable, Identifiable {
 
   var symbol: String {
     switch self {
+    case .dashboard:
+      return "globe"
     case .overview:
       return "square.grid.2x2"
     case .controls:
@@ -306,6 +312,9 @@ enum CommandRunner {
 }
 
 enum LauncherCLI {
+  /// Maximum time (seconds) to wait for a launcher command before killing it.
+  private static let timeoutSeconds: Double = 120
+
   static func run(_ action: ShellAction, configuration: ShellConfiguration, suppressBrowser: Bool = true) throws -> String {
     guard FileManager.default.fileExists(atPath: configuration.launcherPath) else {
       throw LauncherExecutionError.missingLauncher(configuration.launcherPath)
@@ -324,10 +333,24 @@ enum LauncherCLI {
     process.environment = environment
     process.standardOutput = pipe
     process.standardError = pipe
+    // Prevent the child from blocking on interactive prompts
+    process.standardInput = FileHandle.nullDevice
 
     try process.run()
+
+    // Wait with a timeout so the GUI never freezes
+    let deadline = Date().addingTimeInterval(timeoutSeconds)
+    while process.isRunning && Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.25)
+    }
+    if process.isRunning {
+      process.terminate()
+      throw LauncherExecutionError.commandFailed(
+        "Launcher timed out after \(Int(timeoutSeconds))s. Run ./scripts/launch-macos.sh in Terminal instead."
+      )
+    }
+
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
 
     let output = String(decoding: data, as: UTF8.self)
       .replacingOccurrences(of: "\\u{001B}\\[[0-9;]*[A-Za-z]", with: "", options: .regularExpression)
@@ -578,8 +601,29 @@ final class ShellRuntime: ObservableObject {
     let reachable = await DashboardProbe.isReachable(configuration.dashboardURL)
     if reachable {
       serviceState = .running
-      lastSummary = "NemoClaw is already running in the native app."
+      lastSummary = "NemoClaw is already running."
       await refreshOverview()
+      return
+    }
+
+    // Check whether a sandbox has been onboarded. The launcher script enters
+    // interactive onboarding when no sandbox exists, which hangs the GUI
+    // because there is no TTY. Skip auto-start in that case and guide the
+    // user to run the launcher manually first.
+    let registryPath = (configuration.logDirectory as NSString)
+      .deletingLastPathComponent + "/sandboxes.json"
+    let hasSandbox: Bool = {
+      guard let data = try? Data(contentsOf: URL(fileURLWithPath: registryPath)),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let sandboxes = json["sandboxes"] as? [String: Any] else {
+        return false
+      }
+      return !sandboxes.isEmpty
+    }()
+
+    if !hasSandbox {
+      serviceState = .stopped
+      lastSummary = "No sandbox found. Run \"./scripts/launch-macos.sh\" in Terminal first to complete onboarding."
       return
     }
 
@@ -999,6 +1043,22 @@ struct LogsTabView: View {
   }
 }
 
+struct DashboardWebView: NSViewRepresentable {
+  let url: URL
+
+  func makeNSView(context: Context) -> WKWebView {
+    let webView = WKWebView(frame: .zero)
+    // Default to transparent so app background shows before loading
+    webView.setValue(false, forKey: "drawsBackground")
+    return webView
+  }
+
+  func updateNSView(_ webView: WKWebView, context: Context) {
+    let request = URLRequest(url: url)
+    webView.load(request)
+  }
+}
+
 struct HeaderView: View {
   @EnvironmentObject private var runtime: ShellRuntime
 
@@ -1040,6 +1100,14 @@ struct NativeShellTabs: View {
 
   var body: some View {
     TabView(selection: $selectedTab) {
+      if runtime.configuration.appMode == .desktop {
+        DashboardWebView(url: runtime.configuration.dashboardURL)
+          .tabItem {
+            Label(NativeTab.dashboard.title, systemImage: NativeTab.dashboard.symbol)
+          }
+          .tag(NativeTab.dashboard)
+      }
+
       OverviewTabView()
         .tabItem {
           Label(NativeTab.overview.title, systemImage: NativeTab.overview.symbol)
@@ -1066,7 +1134,7 @@ struct DesktopShellView: View {
     VStack(spacing: 0) {
       HeaderView()
       Divider()
-      NativeShellTabs(initialTab: .overview)
+      NativeShellTabs(initialTab: .dashboard)
     }
     .frame(minWidth: 1120, minHeight: 760)
   }

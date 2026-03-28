@@ -36,6 +36,7 @@ build_native_binary() {
     -target arm64-apple-macos13.0 \
     -framework AppKit \
     -framework SwiftUI \
+    -framework WebKit \
     "$SOURCE_PATH" \
     -o "$build_dir/$EXECUTABLE_NAME"
 }
