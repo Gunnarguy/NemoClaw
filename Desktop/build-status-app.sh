@@ -9,80 +9,110 @@ APP_NAME="NemoClaw Status"
 APP_DIR="$HOME/Applications/${APP_NAME}.app"
 DESKTOP_APP_NAME="NemoClaw"
 DESKTOP_APP_DIR="$HOME/Desktop/${DESKTOP_APP_NAME}.app"
-BUILD_DIR="$REPO_DIR/Desktop/.build"
-SCRIPT_PATH="$BUILD_DIR/${APP_NAME}.applescript"
-DESKTOP_SCRIPT_PATH="$BUILD_DIR/${DESKTOP_APP_NAME}.applescript"
-APP_LOG_DIR="$HOME/.nemoclaw/logs"
-APP_LOG_PATH="$APP_LOG_DIR/status-app.log"
-DESKTOP_APP_LOG_PATH="$APP_LOG_DIR/desktop-app.log"
+SOURCE_PATH="$REPO_DIR/Desktop/NemoClawShell.swift"
 LAUNCHER_PATH="$REPO_DIR/scripts/launch-macos.sh"
 BIN_DIR="$HOME/.nemoclaw/bin"
 MACBUD_PATH="$BIN_DIR/macbud"
 OBSOLETE_CONTROL_PLIST="$HOME/Library/LaunchAgents/local.nemoclaw.control.plist"
 OBSOLETE_CONTROL_SCRIPT="$BIN_DIR/macbud-control.py"
+STATUS_BUNDLE_ID="local.nemoclaw.status"
+DESKTOP_BUNDLE_ID="local.nemoclaw.desktop"
+EXECUTABLE_NAME="NemoClawShell"
+DASHBOARD_URL="http://127.0.0.1:18789"
 ACTION="${1:-install}"
 
-mkdir -p "$BUILD_DIR" "$HOME/Applications" "$APP_LOG_DIR" "$BIN_DIR"
+mkdir -p "$HOME/Applications" "$BIN_DIR"
 
-build_app() {
-  cat > "$SCRIPT_PATH" <<EOF
-on run
-  my showControls()
-end run
+build_native_binary() {
+  local build_dir="$1"
 
-on reopen
-  my showControls()
-end reopen
+  command -v xcrun >/dev/null 2>&1 || {
+    echo "xcrun is required to build the native macOS shell." >&2
+    exit 1
+  }
 
-on showControls()
-  set launcherPath to "${LAUNCHER_PATH}"
-  set statusLogPath to "${APP_LOG_PATH}"
-  set promptText to "NemoClaw controls\n\nStart or reopen the dashboard, stop the UI stack, or restart it cleanly."
-  set buttonChoice to button returned of (display dialog promptText buttons {"Cancel", "Stop", "Restart", "Start", "Open Dashboard"} default button "Open Dashboard" cancel button "Cancel" with title "NemoClaw Status")
-
-  if buttonChoice is "Cancel" then
-    return
-  else if buttonChoice is "Stop" then
-    my runAction("--app-stop", launcherPath, statusLogPath)
-  else if buttonChoice is "Restart" then
-    my runAction("--app-restart", launcherPath, statusLogPath)
-  else if buttonChoice is "Start" then
-    my runAction("--app-start", launcherPath, statusLogPath)
-  else if buttonChoice is "Open Dashboard" then
-    my runAction("--app-start", launcherPath, statusLogPath)
-  end if
-end showControls
-
-on runAction(modeFlag, launcherPath, statusLogPath)
-  set commandText to "/usr/bin/nohup /bin/bash " & quoted form of launcherPath & " " & quoted form of modeFlag & " >>" & quoted form of statusLogPath & " 2>&1 &"
-  do shell script commandText
-end runAction
-EOF
-
-  rm -rf "$APP_DIR"
-  osacompile -o "$APP_DIR" "$SCRIPT_PATH"
+  xcrun swiftc \
+    -parse-as-library \
+    -target arm64-apple-macos13.0 \
+    -framework AppKit \
+    -framework SwiftUI \
+    -framework WebKit \
+    "$SOURCE_PATH" \
+    -o "$build_dir/$EXECUTABLE_NAME"
 }
 
-build_desktop_app() {
-  if [ -d "$DESKTOP_APP_DIR/Contents/MacOS" ]; then
-    cat > "$DESKTOP_APP_DIR/Contents/MacOS/NemoClaw" <<EOF
-#!/bin/bash
-set -euo pipefail
-mkdir -p "$APP_LOG_DIR"
-exec /usr/bin/nohup /bin/bash "$LAUNCHER_PATH" --app-start >>"$DESKTOP_APP_LOG_PATH" 2>&1 &
-EOF
-    chmod +x "$DESKTOP_APP_DIR/Contents/MacOS/NemoClaw"
-    return 0
-  fi
+write_info_plist() {
+  local plist_path="$1"
+  local app_display_name="$2"
+  local bundle_identifier="$3"
+  local app_mode="$4"
 
-  cat > "$DESKTOP_SCRIPT_PATH" <<EOF
-on run
-  do shell script "/usr/bin/nohup /bin/bash " & quoted form of "${LAUNCHER_PATH}" & " --app-start >>" & quoted form of "${DESKTOP_APP_LOG_PATH}" & " 2>&1 &"
-end run
+  cat > "$plist_path" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>$app_display_name</string>
+  <key>CFBundleExecutable</key>
+  <string>$EXECUTABLE_NAME</string>
+  <key>CFBundleIdentifier</key>
+  <string>$bundle_identifier</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>$app_display_name</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>NemoClaw needs access to the repository in your Documents folder to launch and manage the local UI stack.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>NemoClaw stores the shell app on your Desktop and needs access to manage it.</string>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>NemoClawAppMode</key>
+  <string>$app_mode</string>
+  <key>NemoClawLauncherPath</key>
+  <string>$LAUNCHER_PATH</string>
+  <key>NemoClawDashboardURL</key>
+  <string>$DASHBOARD_URL</string>
+  <key>NemoClawDesktopAppPath</key>
+  <string>$DESKTOP_APP_DIR</string>
+  <key>NemoClawStatusAppPath</key>
+  <string>$APP_DIR</string>
+  <key>NemoClawDesktopBundleIdentifier</key>
+  <string>$DESKTOP_BUNDLE_ID</string>
+  <key>NemoClawStatusBundleIdentifier</key>
+  <string>$STATUS_BUNDLE_ID</string>
+</dict>
+</plist>
 EOF
+}
 
-  rm -rf "$DESKTOP_APP_DIR"
-  osacompile -o "$DESKTOP_APP_DIR" "$DESKTOP_SCRIPT_PATH"
+install_app_bundle() {
+  local target_app_dir="$1"
+  local app_display_name="$2"
+  local bundle_identifier="$3"
+  local app_mode="$4"
+  local build_dir="$5"
+
+  rm -rf "$target_app_dir"
+  mkdir -p "$target_app_dir/Contents/MacOS"
+
+  cp "$build_dir/$EXECUTABLE_NAME" "$target_app_dir/Contents/MacOS/$EXECUTABLE_NAME"
+  write_info_plist "$target_app_dir/Contents/Info.plist" "$app_display_name" "$bundle_identifier" "$app_mode"
+
+  codesign --force --deep --sign - "$target_app_dir" >/dev/null
 }
 
 install_macbud_helper() {
@@ -92,19 +122,38 @@ set -euo pipefail
 
 LAUNCHER_PATH="${LAUNCHER_PATH}"
 STATUS_APP_PATH="${APP_DIR}"
+DESKTOP_APP_PATH="${DESKTOP_APP_DIR}"
 
 case "\${1:-open}" in
-  open|start|on)
-    exec /bin/bash "${LAUNCHER_PATH}" --app-start
+  open|app|on)
+    exec open "\${DESKTOP_APP_PATH}"
+    ;;
+  start)
+    exec env NEMOCLAW_OPEN_BROWSER=0 /bin/bash "\${LAUNCHER_PATH}" --app-start
     ;;
   stop|off|kill)
-    exec /bin/bash "${LAUNCHER_PATH}" --app-stop
+    exec /bin/bash "\${LAUNCHER_PATH}" --app-stop
     ;;
   restart)
-    exec /bin/bash "${LAUNCHER_PATH}" --app-restart
+    exec env NEMOCLAW_OPEN_BROWSER=0 /bin/bash "\${LAUNCHER_PATH}" --app-restart
+    ;;
+  quit|close)
+    handled=0
+    if osascript -e 'tell application "${APP_NAME}" to quit' >/dev/null 2>&1; then
+      handled=1
+    fi
+    if osascript -e 'tell application "${DESKTOP_APP_NAME}" to quit' >/dev/null 2>&1; then
+      handled=1
+    fi
+    if [ "\$handled" -eq 0 ]; then
+      exec /bin/bash "\${LAUNCHER_PATH}" --app-stop
+    fi
+    ;;
+  browser|dashboard)
+    exec open "${DASHBOARD_URL}"
     ;;
   controls|panel)
-    exec open "${APP_DIR}"
+    exec open "\${STATUS_APP_PATH}"
     ;;
   status|"")
     if command -v nemoclaw >/dev/null 2>&1; then
@@ -113,7 +162,7 @@ case "\${1:-open}" in
     exec node "${REPO_DIR}/bin/nemoclaw.js" status
     ;;
   *)
-    echo "Usage: macbud [open|start|stop|restart|status|controls]" >&2
+    echo "Usage: macbud [open|app|start|stop|restart|quit|status|controls|browser]" >&2
     exit 1
     ;;
 esac
@@ -129,9 +178,18 @@ cleanup_obsolete_shortcuts() {
 
 case "$ACTION" in
   install|build)
+    build_dir="$(mktemp -d "${TMPDIR:-/tmp}/nemoclaw-shell-build.XXXXXX")"
+    trap 'rm -rf "$build_dir"' EXIT
+
     cleanup_obsolete_shortcuts
-    build_app
-    build_desktop_app
+    [ -f "$SOURCE_PATH" ] || {
+      echo "Missing source file: $SOURCE_PATH" >&2
+      exit 1
+    }
+
+    build_native_binary "$build_dir"
+    install_app_bundle "$APP_DIR" "$APP_NAME" "$STATUS_BUNDLE_ID" "status" "$build_dir"
+    install_app_bundle "$DESKTOP_APP_DIR" "$DESKTOP_APP_NAME" "$DESKTOP_BUNDLE_ID" "desktop" "$build_dir"
     install_macbud_helper
     echo "Built ${APP_DIR}"
     echo "Prepared ${DESKTOP_APP_DIR}"

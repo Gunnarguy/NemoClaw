@@ -437,6 +437,9 @@ start_dashboard() {
   if is_agent_mode; then
     should_open_browser="0"
   fi
+  if [ "${NEMOCLAW_OPEN_BROWSER:-1}" = "0" ]; then
+    should_open_browser="0"
+  fi
 
   ensure_gateway
   ensure_dashboard_forward "$sandbox_name"
