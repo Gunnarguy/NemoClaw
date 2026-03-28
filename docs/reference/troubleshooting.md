@@ -204,6 +204,19 @@ $ openshell term
 
 To permanently allow an endpoint, see [Customize the Network Policy](../network-policy/customize-network-policy.md).
 
+### Host CLI exists but the app says it is missing
+
+**What you see:** a CLI such as `gemini` is installed on your Mac, but the OpenClaw runtime still reports it as missing.
+
+**Why:** NemoClaw has separate host and sandbox runtimes. A host install proves only that your host shell can resolve the command. It does not make that binary available inside the sandbox image.
+
+**Fix:** first decide where the tool is actually missing.
+
+- If a host shortcut or LaunchAgent cannot find it, fix the host PATH.
+- If the OpenClaw runtime inside the sandbox cannot find it, install that tool in the sandbox runtime instead of only on the host.
+
+Refer to [Skills and Runtime Environments](../reference/skills-and-runtime-environments.md) for the runtime boundary model and the verified Gemini example.
+
 ### Blueprint run failed
 
 **Fix:** View the error output:

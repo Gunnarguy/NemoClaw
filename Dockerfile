@@ -79,9 +79,6 @@ RUN chmod +x /usr/local/bin/nemoclaw-start
 # nemoclaw onboard passes these at image build time.
 ARG NEMOCLAW_MODEL=nvidia/nemotron-3-super-120b-a12b
 ARG CHAT_UI_URL=http://127.0.0.1:18789
-# Unique per build to ensure each image gets a fresh auth token.
-# Pass --build-arg NEMOCLAW_BUILD_ID=$(date +%s) to bust the cache.
-ARG NEMOCLAW_BUILD_ID=default
 
 WORKDIR /sandbox
 USER sandbox

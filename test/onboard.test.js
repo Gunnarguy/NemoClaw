@@ -8,6 +8,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  buildSandboxCreateCommand,
   buildSandboxConfigSyncScript,
   getInstalledOpenshellVersion,
   getStableGatewayImageRef,
@@ -41,18 +42,26 @@ describe("onboard helpers", () => {
 
   it("pins the gateway image to the installed OpenShell release version", () => {
     assert.equal(getInstalledOpenshellVersion("openshell 0.0.12"), "0.0.12");
-    assert.equal(getInstalledOpenshellVersion("openshell 0.0.13-dev.8+gbbcaed2ea"), "0.0.13");
+    assert.equal(
+      getInstalledOpenshellVersion("openshell 0.0.13-dev.8+gbbcaed2ea"),
+      "0.0.13",
+    );
     assert.equal(getInstalledOpenshellVersion("bogus"), null);
     assert.equal(
       getStableGatewayImageRef("openshell 0.0.12"),
-      "ghcr.io/nvidia/openshell/cluster:0.0.12"
+      "ghcr.io/nvidia/openshell/cluster:0.0.12",
     );
-    assert.equal(getStableGatewayImageRef("openshell 0.0.13-dev.8+gbbcaed2ea"), "ghcr.io/nvidia/openshell/cluster:0.0.13");
+    assert.equal(
+      getStableGatewayImageRef("openshell 0.0.13-dev.8+gbbcaed2ea"),
+      "ghcr.io/nvidia/openshell/cluster:0.0.13",
+    );
     assert.equal(getStableGatewayImageRef("bogus"), null);
   });
 
   it("writes sandbox sync scripts to a temp file for stdin redirection", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-test-"));
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "nemoclaw-onboard-test-"),
+    );
     try {
       const scriptFile = writeSandboxConfigSyncFile("echo test", tmpDir, 1234);
       assert.equal(scriptFile, path.join(tmpDir, "nemoclaw-sync-1234.sh"));
@@ -60,5 +69,19 @@ describe("onboard helpers", () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  it("passes CHAT_UI_URL through the sandbox runtime environment when creating a sandbox", () => {
+    const command = buildSandboxCreateCommand({
+      createArgs: ['--from "/tmp/build/Dockerfile"', '--name "my-assistant"'],
+      envArgs: ["CHAT_UI_URL='https://chat.example.com'"],
+      chatUiUrl: "https://chat.example.com",
+    });
+
+    assert.match(command, /^openshell sandbox create .* -- env /);
+    assert.match(
+      command,
+      /-- env CHAT_UI_URL='https:\/\/chat\.example\.com' nemoclaw-start 2>&1$/,
+    );
   });
 });

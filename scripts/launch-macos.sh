@@ -11,7 +11,6 @@ MODE="${1:-start}"
 LOG_DIR="$HOME/.nemoclaw/logs"
 LAUNCHER_LOG="$LOG_DIR/launcher.log"
 
-GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[1;34m'
@@ -20,6 +19,40 @@ NC='\033[0m'
 info() { printf "${BLUE}[nemoclaw]${NC} %s\n" "$*"; }
 warn() { printf "${YELLOW}[nemoclaw]${NC} %s\n" "$*"; }
 fail() { printf "${RED}[nemoclaw]${NC} %s\n" "$*"; exit 1; }
+
+is_agent_mode() {
+  [ "$MODE" = "--agent" ]
+}
+
+is_recover_mode() {
+  [ "$MODE" = "--recover-ui" ]
+}
+
+is_stop_mode() {
+  [ "$MODE" = "stop" ] || [ "$MODE" = "--app-stop" ]
+}
+
+is_restart_mode() {
+  [ "$MODE" = "restart" ] || [ "$MODE" = "--app-restart" ]
+}
+
+is_app_mode() {
+  [ "$MODE" = "--app-start" ] || is_stop_mode || is_restart_mode
+}
+
+should_pause_on_exit() {
+  ! is_agent_mode && ! is_app_mode && ! is_recover_mode
+}
+
+validate_mode() {
+  case "$MODE" in
+    start|stop|restart|--agent|--recover-ui|--app-start|--app-stop|--app-restart)
+      ;;
+    *)
+      fail "Unsupported launcher mode: $MODE"
+      ;;
+  esac
+}
 
 installed_nemoclaw_available() {
   command -v nemoclaw >/dev/null 2>&1
@@ -78,6 +111,58 @@ except Exception:
 PY
 }
 
+get_dashboard_token() {
+  local sandbox_name="$1"
+  python3 - "$sandbox_name" <<'PY'
+import re
+import subprocess
+import sys
+
+sandbox_name = sys.argv[1]
+payload = """python3 - <<'PYTOKEN'
+import json
+import os
+
+path = os.path.expanduser('~/.openclaw/openclaw.json')
+try:
+    cfg = json.load(open(path))
+except Exception:
+    print('')
+else:
+    print(cfg.get('gateway', {}).get('auth', {}).get('token', ''))
+PYTOKEN
+exit
+"""
+
+completed = subprocess.run(
+    ["openshell", "sandbox", "connect", sandbox_name],
+    input=payload,
+    capture_output=True,
+    text=True,
+    check=False,
+)
+
+for line in reversed(completed.stdout.splitlines()):
+    token = line.strip()
+    if re.fullmatch(r"[A-Fa-f0-9]{32,}", token):
+        sys.stdout.write(token)
+        break
+PY
+}
+
+get_dashboard_url() {
+  local sandbox_name="$1"
+  local token=""
+
+  token="$(get_dashboard_token "$sandbox_name")"
+  if [ -n "$token" ]; then
+    printf '%s/#token=%s' "${DESKTOP_URL%/}" "$token"
+    return 0
+  fi
+
+  printf '%s' "$DESKTOP_URL"
+}
+
 nemoclaw_cmd() {
   if installed_nemoclaw_available; then
     nemoclaw "$@"
@@ -99,13 +184,13 @@ ensure_path() {
   export PATH="$LOCAL_BIN:$PATH"
   if [ -d "$HOME/.nvm/versions/node" ]; then
     local latest_node
-    latest_node="$(ls "$HOME/.nvm/versions/node" 2>/dev/null | sort -V | tail -1 2>/dev/null || true)"
+    latest_node="$(find "$HOME/.nvm/versions/node" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | sort -V | tail -1 2>/dev/null || true)"
     if [ -n "$latest_node" ]; then
       export PATH="$HOME/.nvm/versions/node/$latest_node/bin:$PATH"
     fi
   fi
   if [ -s "$HOME/.nvm/nvm.sh" ]; then
-    # shellcheck disable=SC1090
+    # shellcheck source=/dev/null
     . "$HOME/.nvm/nvm.sh"
     nvm use default >/dev/null 2>&1 || true
   fi
@@ -211,6 +296,23 @@ ensure_status_bar() {
   bash "$build_script" install >/dev/null 2>&1 || warn "Status bar app build failed (non-fatal)."
 }
 
+stop_dashboard_stack() {
+  local sandbox_name="${1:-}"
+
+  info "Stopping NemoClaw UI services..."
+  log_launcher "Stopping NemoClaw UI services for sandbox '${sandbox_name:-unknown}'."
+
+  bash "$REPO_DIR/scripts/start-services.sh" --stop >/dev/null 2>&1 || true
+
+  if [ -n "$sandbox_name" ]; then
+    openshell forward stop 18789 "$sandbox_name" >/dev/null 2>&1 || true
+  fi
+  openshell forward stop 18789 >/dev/null 2>&1 || true
+  openshell gateway stop -g nemoclaw >/dev/null 2>&1 || true
+
+  notify_user "NemoClaw" "UI stopped" "${sandbox_name:-No sandbox}"
+}
+
 gateway_connected() {
   openshell status 2>/dev/null | perl -pe 's/\e\[[0-9;]*[A-Za-z]//g' | grep -q 'Status: Connected'
 }
@@ -247,6 +349,13 @@ ensure_dashboard_forward() {
     openshell forward stop 18789 "$sandbox_name" >/dev/null 2>&1 || true
   fi
 
+  if lsof -nP -iTCP:18789 -sTCP:LISTEN >/dev/null 2>&1 && ! dashboard_ok; then
+    warn "Dashboard port 18789 is stale. Clearing existing listener..."
+    openshell forward stop 18789 "$sandbox_name" >/dev/null 2>&1 || true
+    openshell forward stop 18789 >/dev/null 2>&1 || true
+    sleep 1
+  fi
+
   if ! lsof -nP -iTCP:18789 -sTCP:LISTEN >/dev/null 2>&1; then
     info "Starting dashboard port forward for '$sandbox_name'..."
     openshell forward start --background 18789 "$sandbox_name"
@@ -273,6 +382,44 @@ if (current) process.stdout.write(current);
 EOF
 }
 
+remove_registered_sandbox() {
+  local registry_path="$1"
+  local sandbox_name="$2"
+
+  node - "$registry_path" "$sandbox_name" <<'EOF'
+const registry = require(process.argv[2]);
+registry.removeSandbox(process.argv[3]);
+EOF
+}
+
+sandbox_ready() {
+  local sandbox_name="$1"
+  openshell sandbox list 2>/dev/null | perl -pe 's/\e\[[0-9;]*[A-Za-z]//g' | awk -v name="$sandbox_name" 'NR > 1 && $1 == name && $NF == "Ready" { found=1 } END { exit found ? 0 : 1 }'
+}
+
+recreate_missing_sandbox() {
+  local sandbox_name="$1"
+  local api_key=""
+
+  api_key="$(cd "$REPO_DIR" && node - <<'EOF'
+const { getCredential } = require('./bin/lib/credentials');
+process.stdout.write(getCredential('NVIDIA_API_KEY') || '');
+EOF
+)"
+
+  [ -n "$api_key" ] || fail "Sandbox is missing and no saved NVIDIA_API_KEY is available to recreate it automatically."
+
+  warn "Registered sandbox '$sandbox_name' is missing. Recreating it from saved configuration..."
+  log_launcher "Recreating missing sandbox '$sandbox_name'."
+  remove_registered_sandbox "$REPO_DIR/bin/lib/registry.js" "$sandbox_name"
+  (
+    cd "$REPO_DIR"
+    NVIDIA_API_KEY="$api_key" \
+    NEMOCLAW_SANDBOX_NAME="$sandbox_name" \
+    node bin/nemoclaw.js onboard --non-interactive
+  )
+}
+
 run_onboard() {
   info "No sandbox found. Starting first-run onboarding..."
   log_launcher "No sandbox found; starting onboarding."
@@ -282,23 +429,25 @@ run_onboard() {
 start_dashboard() {
   local sandbox_name="$1"
   local command_label
+  local dashboard_url
   local should_open_browser="1"
   [ -n "$sandbox_name" ] || fail "No sandbox name available."
 
   command_label="$(nemoclaw_cmd_label)"
-  if [ "$MODE" = "--agent" ]; then
+  if is_agent_mode; then
     should_open_browser="0"
   fi
 
   ensure_gateway
   ensure_dashboard_forward "$sandbox_name"
+  dashboard_url="$(get_dashboard_url "$sandbox_name")"
 
   if [ "$should_open_browser" = "1" ]; then
     info "Opening NemoClaw dashboard in your browser..."
     log_launcher "Opening dashboard for sandbox '$sandbox_name'."
-    open "$DESKTOP_URL"
+    open "$dashboard_url"
   else
-    info "Dashboard ready at $DESKTOP_URL"
+    info "Dashboard ready at $dashboard_url"
     log_launcher "Dashboard ready for sandbox '$sandbox_name'."
   fi
 
@@ -312,7 +461,7 @@ start_dashboard() {
   notify_user "NemoClaw Ready" "Dashboard is ready at 127.0.0.1:18789" "$sandbox_name"
 
   echo ""
-  echo "  Dashboard: $DESKTOP_URL"
+  echo "  Dashboard: $dashboard_url"
   echo "  Sandbox:   $sandbox_name"
   echo ""
   echo "  Useful commands:"
@@ -323,8 +472,9 @@ start_dashboard() {
 }
 
 main() {
+  validate_mode
   ensure_log_dir
-  if [ "$MODE" != "--agent" ]; then
+  if ! is_agent_mode; then
     clear || true
     echo ""
     echo "  NemoClaw macOS Launcher"
@@ -332,16 +482,24 @@ main() {
   fi
 
   ensure_node
-  wait_for_docker
-  ensure_deps
-  ensure_global_nemoclaw
   ensure_openshell
-  if [ "$MODE" = "--agent" ] && [ ! -f "$HOME/.nemoclaw/credentials.json" ]; then
+
+  if ! is_stop_mode; then
+    wait_for_docker
+    ensure_deps
+    ensure_global_nemoclaw
+  fi
+
+  if is_agent_mode && [ ! -f "$HOME/.nemoclaw/credentials.json" ]; then
     info "No credentials file yet. Agent exiting quietly."
     exit 0
   fi
-  ensure_credentials
-  if [ "$MODE" != "--agent" ]; then
+
+  if ! is_stop_mode; then
+    ensure_credentials
+  fi
+
+  if ! is_agent_mode && ! is_stop_mode; then
     ensure_launchagent
     ensure_status_bar
   fi
@@ -349,26 +507,42 @@ main() {
   local sandbox_name
   sandbox_name="$(get_default_sandbox "$REPO_DIR/bin/lib/registry.js")"
 
-  if [ "$MODE" = "--agent" ] && [ -z "$sandbox_name" ]; then
+  if is_agent_mode && [ -z "$sandbox_name" ]; then
     info "No sandbox registered yet. Agent exiting quietly."
     exit 0
   fi
 
-  if [ -z "$sandbox_name" ] && [ "$MODE" != "--recover-ui" ]; then
+  if is_stop_mode; then
+    stop_dashboard_stack "$sandbox_name"
+    exit 0
+  fi
+
+  if [ -z "$sandbox_name" ] && ! is_recover_mode; then
     run_onboard
     sandbox_name="$(get_default_sandbox "$REPO_DIR/bin/lib/registry.js")"
   fi
 
-  if [ "$MODE" = "--recover-ui" ] && [ -n "$sandbox_name" ]; then
+  if [ -n "$sandbox_name" ] && ! sandbox_ready "$sandbox_name"; then
+    recreate_missing_sandbox "$sandbox_name"
+  fi
+
+  if is_recover_mode && [ -n "$sandbox_name" ]; then
     info "Recovering UI for sandbox '$sandbox_name'..."
     log_launcher "Recovering UI for sandbox '$sandbox_name'."
     openshell forward stop 18789 "$sandbox_name" >/dev/null 2>&1 || true
   fi
 
   [ -n "$sandbox_name" ] || fail "No sandbox was registered after onboarding."
+
+  if is_restart_mode; then
+    info "Restarting NemoClaw UI for '$sandbox_name'..."
+    log_launcher "Restarting NemoClaw UI for sandbox '$sandbox_name'."
+    stop_dashboard_stack "$sandbox_name"
+  fi
+
   start_dashboard "$sandbox_name"
 
-  if [ "$MODE" != "--agent" ]; then
+  if should_pause_on_exit; then
     echo "Press Enter to close this window."
     read -r _
   fi
