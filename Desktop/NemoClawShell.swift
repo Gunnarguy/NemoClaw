@@ -46,6 +46,20 @@ struct ShellConfiguration: Sendable {
   let statusBundleIdentifier: String
   let logDirectory: String
 
+  var registryPath: String {
+    (logDirectory as NSString).deletingLastPathComponent + "/sandboxes.json"
+  }
+
+  /// Returns true when at least one sandbox has been onboarded.
+  func hasSandbox() -> Bool {
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: registryPath)),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let sandboxes = json["sandboxes"] as? [String: Any] else {
+      return false
+    }
+    return !sandboxes.isEmpty
+  }
+
   var needsDocumentsAccess: Bool {
     let documentsRoot = NSHomeDirectory() + "/Documents/"
     return launcherPath.hasPrefix(documentsRoot)
@@ -313,7 +327,7 @@ enum CommandRunner {
 
 enum LauncherCLI {
   /// Maximum time (seconds) to wait for a launcher command before killing it.
-  private static let timeoutSeconds: Double = 120
+  private static let timeoutSeconds: Double = 30
 
   static func run(_ action: ShellAction, configuration: ShellConfiguration, suppressBrowser: Bool = true) throws -> String {
     guard FileManager.default.fileExists(atPath: configuration.launcherPath) else {
@@ -606,22 +620,7 @@ final class ShellRuntime: ObservableObject {
       return
     }
 
-    // Check whether a sandbox has been onboarded. The launcher script enters
-    // interactive onboarding when no sandbox exists, which hangs the GUI
-    // because there is no TTY. Skip auto-start in that case and guide the
-    // user to run the launcher manually first.
-    let registryPath = (configuration.logDirectory as NSString)
-      .deletingLastPathComponent + "/sandboxes.json"
-    let hasSandbox: Bool = {
-      guard let data = try? Data(contentsOf: URL(fileURLWithPath: registryPath)),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let sandboxes = json["sandboxes"] as? [String: Any] else {
-        return false
-      }
-      return !sandboxes.isEmpty
-    }()
-
-    if !hasSandbox {
+    if !configuration.hasSandbox() {
       serviceState = .stopped
       lastSummary = "No sandbox found. Run \"./scripts/launch-macos.sh\" in Terminal first to complete onboarding."
       return
@@ -633,6 +632,16 @@ final class ShellRuntime: ObservableObject {
   private func perform(_ action: ShellAction) async {
     guard !isBusy else {
       return
+    }
+
+    // The launcher script enters interactive onboarding when no sandbox
+    // exists, which blocks forever in a GUI context. Fail fast instead.
+    if action == .start || action == .restart {
+      if !configuration.hasSandbox() {
+        serviceState = .failed("No sandbox onboarded. Run ./scripts/launch-macos.sh in Terminal first.")
+        lastSummary = "No sandbox onboarded. Run ./scripts/launch-macos.sh in Terminal first."
+        return
+      }
     }
 
     isBusy = true
